@@ -23,6 +23,7 @@ func main() {
 	until := flag.String("until", "1970-01-01 00:00:00", "don't download videos earlier than")
 	sd := flag.Bool("sd", false, "don't request HD sources of videos (less requests => notably faster)")
 	directory := flag.String("dir", "./", "directory to save files")
+	to_ := flag.String("to", "", "filename to save the video (the default is generated automatically)")
 	maxSize := flag.Int("max-size", 1<<10, "download only videos smaller than <VALUE> MB")
 	json_ := flag.Bool("json", false, "print info as json, don't download")
 	debug := flag.Bool("debug", false, "log debug info")
@@ -117,6 +118,7 @@ func main() {
 			filename, err := vid.Download(
 				tt.DownloadOpt{
 					Directory:    *directory,
+					To:           *to_,
 					ValidateWith: tt.ValidateWithFfprobe(),
 				})
 			if err != nil {

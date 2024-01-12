@@ -1,4 +1,4 @@
-module github.com/heilkit/tt/tt
+module github.com/heilkit/tt
 
 go 1.21
 
