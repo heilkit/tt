@@ -65,3 +65,8 @@ Usage: ./tikmeh [-profile | -info] [args...] <urls | usernames | ids>
   -until string
         don't download videos earlier than (default "1970-01-01 00:00:00")
 ```
+
+### Download & Setup executable
+
+Go to releases — https://github.com/heilkit/tt/releases. Choose an executable that suits your system and have fun, 
+everything you need is packed in already.
