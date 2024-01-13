@@ -18,7 +18,7 @@ var (
 			Transport: &http.Transport{
 				Proxy: http.ProxyFromEnvironment,
 			},
-			Timeout: time.Minute * 5,
+			Timeout: time.Minute * 15,
 		},
 		// UserAgent from https://explore.whatismybrowser.com/useragents/parse/505617920-tiktok-android-webkit,
 		// UserAgent: "Mozilla/5.0 (Linux; Android 13; 2109119DG Build/TKQ1.220829.002; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.6045.193 Mobile Safari/537.36 trill_320403 JsSdk/1.0 NetType/WIFI Channel/googleplay AppName/trill app_version/32.4.3 ByteLocale/en ByteFullLocale/en Region/MY AppId/1180 Spark/1.4.6.3-bugfix AppVersion/32.4.3 BytedanceWebview/d8a21c6",
@@ -27,10 +27,62 @@ var (
 	}
 	DefaultDownloadTimeout        = time.Millisecond * 100
 	DefaultDownloadTimeoutOnError = time.Second * 30
-	DefaultRetries                = 4
+	DefaultRetries                = 2
 	FilenameFormat                = formatFilename
 	downloadSync                  = &sync.Mutex{}
 )
+
+func (post Post) DownloadVideo(opts ...DownloadOpt) (file string, err error) {
+	posts, err := post.Download(opts...)
+	if len(posts) == 0 {
+		return "", err
+	}
+	return posts[0], err
+}
+
+func (post Post) Download(opts ...DownloadOpt) (files []string, err error) {
+	opt := &DownloadOpt{}
+	if len(opts) != 0 {
+		opt = &opts[0]
+	}
+	opt = opt.Defaults()
+
+	if !opt.NoSync {
+		downloadSync.Lock()
+		defer downloadSync.Unlock()
+	}
+
+	urls := post.ContentUrls()
+
+	files = []string{}
+	for i, _ := range urls {
+		to := opt.To
+		if to == "" {
+			tmp, err := os.Create(path.Join(opt.Directory, FilenameFormat(&post, i)))
+			if err != nil {
+				return files, err
+			}
+			files = append(files, tmp.Name())
+			if err := tmp.Close(); err != nil {
+				return files, err
+			}
+			to = tmp.Name()
+		}
+
+		if i > 0 {
+			time.Sleep(opt.Timeout)
+		}
+		if err := opt.downloadRetrying(&post, i, to, 0, nil); err != nil {
+			for _, file := range files {
+				_ = os.Remove(file)
+			}
+			opt.NoSync = true
+			return opt.Fallback(&post, *opt, err)
+		}
+	}
+
+	return
+}
 
 type DownloadOpt struct {
 	Directory      string
@@ -38,6 +90,7 @@ type DownloadOpt struct {
 	DownloadWith   func(url string, filename string) error
 	ValidateWith   func(filename string) (bool, error)
 	FilenameFormat func(post *Post, i int) string
+	Fallback       func(post *Post, opt DownloadOpt, err error) (files []string, e error)
 	Timeout        time.Duration
 	TimeoutOnError time.Duration
 	NoSync         bool
@@ -85,77 +138,23 @@ func (opt *DownloadOpt) Defaults() *DownloadOpt {
 	} else if ret.Retries == 0 {
 		ret.Retries = DefaultRetries
 	}
+	if ret.Fallback == nil {
+		ret.Fallback = FallbackNone
+	}
 	return ret
 }
 
-func (post Post) IsAlbum() bool {
-	return len(post.Images) != 0
+func FallbackNone(post *Post, opt DownloadOpt, err error) (files []string, e error) {
+	return nil, err
 }
 
-func (post Post) IsVideo() bool {
-	return !post.IsAlbum()
-}
-
-func (post Post) ContentUrls() []string {
-	urls := post.Images
-	if post.IsVideo() {
-		if post.Hdplay != "" {
-			urls = []string{post.Hdplay}
-		} else if post.Play != "" {
-			urls = []string{post.Play}
-		} else {
-			urls = []string{post.Wmplay}
-		}
+func FallbackSD(post *Post, opt DownloadOpt, err error) (files []string, e error) {
+	post, err = GetPost(post.Id, false)
+	if err != nil {
+		return nil, fmt.Errorf("falling back in SD failed with %s", err.Error())
 	}
-	return urls
-}
-
-func (post Post) DownloadVideo(opts ...DownloadOpt) (file string, err error) {
-	posts, err := post.Download(opts...)
-	if len(posts) == 0 {
-		return "", err
-	}
-	return posts[0], err
-}
-
-func (post Post) Download(opts ...DownloadOpt) (files []string, err error) {
-	opt := &DownloadOpt{}
-	if len(opts) != 0 {
-		opt = &opts[0]
-	}
-	opt = opt.Defaults()
-
-	if !opt.NoSync {
-		downloadSync.Lock()
-		defer downloadSync.Unlock()
-	}
-
-	urls := post.ContentUrls()
-
-	files = []string{}
-	for i, _ := range urls {
-		to := opt.To
-		if to == "" {
-			tmp, err := os.Create(path.Join(opt.Directory, FilenameFormat(&post, i)))
-			if err != nil {
-				return files, err
-			}
-			files = append(files, tmp.Name())
-			if err := tmp.Close(); err != nil {
-				return files, err
-			}
-			to = tmp.Name()
-		}
-
-		if i > 0 {
-			time.Sleep(opt.Timeout)
-		}
-		if err := opt.downloadRetrying(&post, i, to, 0, nil); err != nil {
-			return nil, err
-		}
-	}
-
-	return
+	opt.Fallback = FallbackNone
+	return post.Download(opt)
 }
 
 func ValidateWithFfprobe(ffprobe ...string) func(filename string) (isValid bool, err error) {
@@ -194,7 +193,9 @@ func (opt *DownloadOpt) downloadRetrying(post *Post, i int, filename string, try
 
 	url := post.ContentUrls()[i]
 	ret := func(err error) error {
-		time.Sleep(opt.TimeoutOnError)
+		if try != opt.Retries {
+			time.Sleep(opt.TimeoutOnError)
+		}
 		retry, retryErr := GetPost(post.ID())
 		if retryErr != nil {
 			return opt.downloadRetrying(retry, i, filename, try+1, retryErr)

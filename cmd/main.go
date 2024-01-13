@@ -24,11 +24,15 @@ func main() {
 	sd := flag.Bool("sd", false, "don't request HD sources of videos (less requests => notably faster)")
 	directory := flag.String("dir", "./", "directory to save files")
 	to_ := flag.String("to", "", "filename to save the video (the default is generated automatically)")
-	maxSize := flag.Int("max-size", 1<<10, "download only videos smaller than <VALUE> MB")
+	maxSize := flag.Int64("max-size", 1<<20, "download only videos smaller than <VALUE> MB")
+	retries := flag.Int("retries", 3, "retries, if video is broken")
 	json_ := flag.Bool("json", false, "print info as json, don't download")
 	debug := flag.Bool("debug", false, "log debug info")
 	quiet_ := flag.Bool("quiet", false, "quiet")
 	flag.Parse()
+	if *retries == 0 {
+		*retries = -1
+	}
 
 	tt.Debug = *debug
 	urls := flag.Args()
@@ -76,6 +80,11 @@ func main() {
 				filename, err := vid.Download(tt.DownloadOpt{
 					Directory:    *directory,
 					ValidateWith: tt.ValidateWithFfprobe(),
+					Fallback: func(post *tt.Post, opt tt.DownloadOpt, err error) (files []string, e error) {
+						printf("WARN: failed download in HD, falling back for SD %s", opt.FilenameFormat(post, 0))
+						return tt.FallbackSD(post, opt, err)
+					},
+					Retries: *retries,
 				})
 				if err != nil {
 					log.Fatalf("%s: %s", url, err.Error())
@@ -120,6 +129,11 @@ func main() {
 					Directory:    *directory,
 					To:           *to_,
 					ValidateWith: tt.ValidateWithFfprobe(),
+					Fallback: func(post *tt.Post, opt tt.DownloadOpt, err error) (files []string, e error) {
+						printf("WARN: failed download in HD, falling back for SD %s", opt.FilenameFormat(post, 0))
+						return tt.FallbackSD(post, opt, err)
+					},
+					Retries: *retries,
 				})
 			if err != nil {
 				log.Fatalf("%s: %s", url, err.Error())

@@ -11,9 +11,9 @@ type Post struct {
 	Play        string `json:"play"`
 	Wmplay      string `json:"wmplay"`
 	Hdplay      string `json:"hdplay"`
-	Size        int    `json:"size"`
-	WmSize      int    `json:"wm_size"`
-	HdSize      int    `json:"hd_size"`
+	Size        int64  `json:"size"`
+	WmSize      int64  `json:"wm_size"`
+	HdSize      int64  `json:"hd_size"`
 	Music       string `json:"music"`
 	MusicInfo   struct {
 		Id       string `json:"id"`
@@ -49,6 +49,33 @@ type Post struct {
 		Avatar   string `json:"avatar"`
 	} `json:"author"`
 	Images []string `json:"images"`
+}
+
+func (post Post) IsAlbum() bool {
+	return len(post.Images) != 0
+}
+
+func (post Post) IsVideo() bool {
+	return !post.IsAlbum()
+}
+
+func (post Post) ContentUrls(hd ...bool) []string {
+	hd_ := true
+	if len(hd) != 0 {
+		hd_ = hd[0]
+	}
+
+	urls := post.Images
+	if post.IsVideo() {
+		if post.Hdplay != "" && hd_ {
+			urls = []string{post.Hdplay}
+		} else if post.Play != "" {
+			urls = []string{post.Play}
+		} else {
+			urls = []string{post.Wmplay}
+		}
+	}
+	return urls
 }
 
 // ID is the simplest way to get video's id
