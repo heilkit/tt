@@ -11,29 +11,32 @@ https://tikwm.com is the best middleman for getting TikTok video info, afaik. If
 package main
 
 import (
-  "github.com/heilkit/tt/tt"
-  "log"
-  "time"
+	"github.com/heilkit/tt/tt"
+	"log"
+	"time"
 )
 
 func main() {
-  // tt.GetVideo(url string, HD bool) ()
-  postHD, err := tt.GetPost("https://www.tiktok.com/@locallygrownwig/video/6901498776523951365")
-  postHD, err = tt.GetPost("6901498776523951365", true)                // with ID 
-  postSD, err := tt.GetPost("https://vm.tiktok.com/ZM66UoB9m/", false) // with shorten link 
-  localname, err := postHD.DownloadVideo(tt.DownloadOpt{To: "locallygrownwig.mp4"})
+	// basic
+	postInfo, files, err := tt.Download("https://www.tiktok.com/@locallygrownwig/video/6901498776523951365")
 
-  // Get user posts for the last 30 days
-  until := time.Now().Add(-time.Hour * 24 * 30)
-  vidChan, expectedCount, err := tt.GetUserFeed("locallygrownwig", &tt.FeedOpt{
-    While:  tt.WhileAfter(until),
-    Filter: tt.FilterVideo,
-  })
+	// tt.GetVideo(url string, HD bool) ()
+	postHD, err := tt.GetPost("https://www.tiktok.com/@locallygrownwig/video/6901498776523951365")
+	postHD, err = tt.GetPost("6901498776523951365", true)                // with ID 
+	postSD, err := tt.GetPost("https://vm.tiktok.com/ZM66UoB9m/", false) // with shorten link 
+	localname, err := postHD.DownloadVideo(tt.DownloadOpt{To: "locallygrownwig.mp4"})
 
-  for vid := range vidChan {
-    localname, _ := vid.DownloadVideo()
-    log.Println(localname)
-  }
+	// Get user posts for the last 30 days
+	until := time.Now().Add(-time.Hour * 24 * 30)
+	vidChan, expectedCount, err := tt.GetUserFeed("locallygrownwig", &tt.FeedOpt{
+		While:  tt.WhileAfter(until),
+		Filter: tt.FilterVideo,
+	})
+
+	for vid := range vidChan {
+		localname, _ := vid.DownloadVideo()
+		log.Println(localname)
+	}
 }
 
 ```
