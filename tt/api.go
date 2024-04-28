@@ -13,7 +13,7 @@ import (
 
 var (
 	URL              string        = "https://tikwm.com/api"
-	Timeout          time.Duration = time.Second
+	Timeout          time.Duration = time.Second + time.Millisecond*100
 	MaxUserFeedCount int           = 33
 	Debug                          = false
 	requestSync      *sync.Mutex   = &sync.Mutex{}
@@ -93,6 +93,9 @@ func GetPost(url string, hd ...bool) (*Post, error) {
 // GetUserFeedRaw is almost unuseful by itself, check wrappers around it -- GetUserFeed/GetUserFeedAwait.
 func GetUserFeedRaw(uniqueID string, count int, cursor string) (*UserFeed, error) {
 	query := map[string]string{"unique_id": uniqueID, "count": strconv.Itoa(count), "cursor": cursor}
+	if _, err := strconv.ParseInt(uniqueID, 10, 64); err == nil {
+		query = map[string]string{"user_id": uniqueID, "count": strconv.Itoa(count), "cursor": cursor}
+	}
 	return RawParsed[UserFeed]("user/posts", query)
 }
 

@@ -1,17 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/heilkit/tt/tt"
-	"log"
+	"log/slog"
 	"os"
-	"strings"
-	"time"
 )
-
-const MB = 1 << 20
 
 func main() {
 	flag.Usage = func() {
@@ -24,11 +19,12 @@ func main() {
 	sd := flag.Bool("sd", false, "don't request HD sources of videos (less requests => notably faster)")
 	directory := flag.String("dir", "./", "directory to save files")
 	to_ := flag.String("to", "", "filename to save the video (the default is generated automatically)")
-	maxSize := flag.Int64("max-size", 1<<20, "download only videos smaller than <VALUE> MB")
-	retries := flag.Int("retries", 3, "retries, if video is broken")
+	maxSize := flag.Int64("max-size", 4096, "download only videos smaller than <VALUE> MB")
+	retries := flag.Int("retries", 3, "retries number, if something goes wrong")
 	json_ := flag.Bool("json", false, "print info as json, don't download")
 	debug := flag.Bool("debug", false, "log debug info")
-	quiet_ := flag.Bool("quiet", false, "quiet")
+	quiet_ := flag.Bool("quiet", false, "print only errors")
+	ignore := flag.Bool("ignore", false, "ignore errors and continue downloading")
 	flag.Parse()
 	if *retries == 0 {
 		*retries = -1
@@ -40,123 +36,46 @@ func main() {
 		println("no arguments were passed, use -help to get help")
 		os.Exit(0)
 	}
-	quiet = *quiet_
+
+	log = slog.Default()
+	if *quiet_ || *debug {
+		log = slog.New(slog.NewTextHandler(os.Stdout, getOptions(*debug, *quiet_)))
+	}
+	if *json_ {
+		log = slog.New(slog.NewJSONHandler(os.Stdout, getOptions(*debug, *quiet_)))
+	}
 
 	for _, url := range urls {
 		ensureDir(*directory)
 
 		switch {
 		case *cmdProfile:
-			until, err := time.Parse(time.DateTime, *until)
-			if err != nil {
-				log.Fatalf("%s: %s", url, err.Error())
-			}
-
-			postChan, expectedCount, err := tt.GetUserFeed(url, tt.FeedOpt{
-				While: tt.WhileAfter(until),
-				OnError: func(err error) {
-					if err != nil {
-						log.Fatalf("%s: %s", url, err.Error())
-					}
-				},
-				SD: *sd,
-				Filter: func(post *tt.Post) bool {
-					return post.Size < *maxSize*MB
-				},
-			})
-
-			jsonRet := []string{}
-			i := 0
-			for vid := range postChan {
-				if *json_ {
-					buffer, err := json.MarshalIndent(vid, "", "\t")
-					if err != nil {
-						log.Fatalf("%s: %s", url, err.Error())
-					}
-					jsonRet = append(jsonRet, string(buffer))
-					continue
-				}
-
-				filename, err := vid.Download(tt.DownloadOpt{
-					Directory:    *directory,
-					ValidateWith: tt.ValidateWithFfprobe(),
-					Fallback: func(post *tt.Post, opt tt.DownloadOpt, err error) (files []string, e error) {
-						printf("WARN: failed download in HD, falling back for SD %s", opt.FilenameFormat(post, 0))
-						return tt.FallbackSD(post, opt, err)
-					},
-					Retries: *retries,
-				})
-				if err != nil {
-					log.Fatalf("%s: %s", url, err.Error())
-				}
-				i += 1
-				printf("%s: [%d/%d]\t %s", url, i, expectedCount, filename)
-			}
-
-			if *json_ {
-				fmt.Printf("[%s]", strings.Join(jsonRet, ",\n"))
+			if err := CmdProfile(url, CmdProfileOpt{
+				SD:        *sd,
+				json:      *json_,
+				until:     *until,
+				retries:   *retries,
+				maxSize:   *maxSize,
+				directory: *directory,
+				ignore:    *ignore,
+			}); err != nil {
+				log.Error("Downloading profile failed", "user", url, "error", err)
 			}
 
 		case *cmdInfo:
-			vid, err := tt.GetUserDetail(url)
-			if err != nil {
-				log.Fatalf("%s: %s", url, err.Error())
-			}
-
-			buffer, err := json.MarshalIndent(vid, "", "\t")
-			if err != nil {
-				log.Fatalf("%s: %s", url, err.Error())
-			}
-			print(string(buffer))
+			CmdInfo(url)
 
 		default:
-			vid, err := tt.GetPost(url, !*sd)
-			if err != nil {
-				log.Fatalf("%s: %s", url, err.Error())
-			}
-
-			if *json_ {
-				buffer, err := json.MarshalIndent(vid, "", "\t")
-				if err != nil {
-					log.Fatalf("%s: %s", url, err.Error())
-				}
-				print(string(buffer))
-				continue
-			}
-
-			filename, err := vid.Download(
-				tt.DownloadOpt{
-					Directory:    *directory,
-					To:           *to_,
-					ValidateWith: tt.ValidateWithFfprobe(),
-					Fallback: func(post *tt.Post, opt tt.DownloadOpt, err error) (files []string, e error) {
-						printf("WARN: failed download in HD, falling back for SD %s", opt.FilenameFormat(post, 0))
-						return tt.FallbackSD(post, opt, err)
-					},
-					Retries: *retries,
-				})
-			if err != nil {
-				log.Fatalf("%s: %s", url, err.Error())
-			}
-			printf("%s: %s", url, filename)
+			CmdVideo(url, sd, json_, to_, directory, retries)
 		}
 
 	}
 }
 
-var quiet = false
-
-func printf(format string, what ...interface{}) {
-	if quiet {
-		return
-	}
-	log.Printf(format, what...)
-}
-
 func ensureDir(dir string) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		if err := os.Mkdir(dir, 0755); err != nil {
-			log.Fatalln(err)
+			log.Error("error creating directory", "error", err)
 		}
 	}
 }
