@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cavaliergopher/grab/v3"
+	"io"
 	"log/slog"
 	"net/http"
 	"os/exec"
@@ -64,7 +65,7 @@ func (opt *DownloadOpt) WithDefaults() *DownloadOpt {
 		opt.Retries = 0
 	}
 	if opt.Fallback == nil {
-		opt.Fallback = func(post *Post, _ DownloadOpt, err error) (files []string, e error) { return nil, err }
+		opt.Fallback = fallbackNone
 	}
 	if opt.FilenameFormat == nil {
 		if opt.Filename != "" {
@@ -74,7 +75,7 @@ func (opt *DownloadOpt) WithDefaults() *DownloadOpt {
 		}
 	}
 	if opt.Log == nil {
-		opt.Log = slog.Default()
+		opt.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
 	if opt.DownloadWith == nil {
@@ -129,6 +130,7 @@ func (post Post) Download(opt ...*DownloadOpt) (filenames []string, err error) {
 		filename := path.Join(opts.Directory, opts.FilenameFormat(&post, i))
 		if err := opts.DownloadWith(url, filename); err != nil {
 			for try := 0; try < opts.Retries || err == nil; try++ {
+				opts.Log.Warn("Download failed, retrying...", "err", err, "try", try+1)
 				time.Sleep(opts.TimeoutOnError)
 				err = opts.DownloadWith(url, filename)
 			}
@@ -162,8 +164,14 @@ func DownloadTo(filename string) func(post *Post, i int) string {
 }
 
 func FallbackToSD(post *Post, opt DownloadOpt, err error) (filenames []string, e error) {
+	opt.Log.Warn("Downloading failed, falling back to SD", "post", post.ID(), "err", err)
 	opt.SD = true
-	return opt.Fallback(post, opt, err)
+	opt.Fallback = fallbackNone
+	return post.Download(&opt)
+}
+
+func fallbackNone(post *Post, opt DownloadOpt, err error) (files []string, e error) {
+	return nil, err
 }
 
 func ValidateWithFfprobe(ffprobe ...string) func(filename string) (isValid bool, err error) {
