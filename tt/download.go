@@ -87,16 +87,30 @@ func (opt *DownloadOpt) WithDefaults() *DownloadOpt {
 	return opt
 }
 
-func Download(filename string, opt ...*DownloadOpt) (filenames []string, err error) {
+func Download(filename string, opt ...*DownloadOpt) (post *Post, filenames []string, err error) {
+	opts := &DownloadOpt{}
+	if len(opt) > 0 {
+		opts = opt[0]
+	}
+	post, err = GetPost(filename, opts.SD)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Download -> GetPost: %w", err)
+	}
+	files, err := post.Download(opts)
+	return post, files, err
+}
+
+func DownloadSingle(filename string, opt ...*DownloadOpt) (filenames string, err error) {
 	opts := &DownloadOpt{}
 	if len(opt) > 0 {
 		opts = opt[0]
 	}
 	post, err := GetPost(filename, opts.SD)
 	if err != nil {
-		return nil, fmt.Errorf("Download -> GetPost: %w", err)
+		return "", fmt.Errorf("DownloadSingle -> GetPost: %w", err)
 	}
-	return post.Download(opts)
+	files, err := post.Download(opts)
+	return files[0], err
 }
 
 func (post Post) Download(opt ...*DownloadOpt) (filenames []string, err error) {
