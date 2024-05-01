@@ -88,12 +88,12 @@ func (opt *DownloadOpt) WithDefaults() *DownloadOpt {
 	return opt
 }
 
-func Download(filename string, opt ...*DownloadOpt) (post *Post, filenames []string, err error) {
+func Download(url string, opt ...*DownloadOpt) (post *Post, filenames []string, err error) {
 	opts := &DownloadOpt{}
 	if len(opt) > 0 {
 		opts = opt[0]
 	}
-	post, err = GetPost(filename, opts.SD)
+	post, err = GetPost(url, opts.SD)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Download -> GetPost: %w", err)
 	}

@@ -82,3 +82,9 @@ func main() {
 }
 
 ```
+
+## [Library] go.mod
+
+```
+	github.com/heilkit/tt v1.1.0
+```
