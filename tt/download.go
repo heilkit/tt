@@ -93,7 +93,7 @@ func Download(url string, opt ...*DownloadOpt) (post *Post, filenames []string, 
 	if len(opt) > 0 {
 		opts = opt[0]
 	}
-	post, err = GetPost(url, opts.SD)
+	post, err = GetPost(url, !opts.SD)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Download -> GetPost: %w", err)
 	}
@@ -106,7 +106,7 @@ func DownloadSingle(filename string, opt ...*DownloadOpt) (filenames string, err
 	if len(opt) > 0 {
 		opts = opt[0]
 	}
-	post, err := GetPost(filename, opts.SD)
+	post, err := GetPost(filename, !opts.SD)
 	if err != nil {
 		return "", fmt.Errorf("DownloadSingle -> GetPost: %w", err)
 	}
@@ -125,7 +125,7 @@ func (post Post) Download(opt ...*DownloadOpt) (filenames []string, err error) {
 		defer DefaultDownloadMutex.Unlock()
 	}
 
-	for i, url := range post.ContentUrls(opts.SD) {
+	for i, url := range post.ContentUrls(!opts.SD) {
 		time.Sleep(opts.Timeout)
 		filename := path.Join(opts.Directory, opts.FilenameFormat(&post, i))
 		if err := opts.DownloadWith(url, filename); err != nil {
@@ -136,7 +136,7 @@ func (post Post) Download(opt ...*DownloadOpt) (filenames []string, err error) {
 			}
 			//goland:noinspection GoDfaConstantCondition -- this is correct, bc `for` loop before ends if err == nil.
 			if err != nil {
-				return opts.Fallback(&post, *opts, fmt.Errorf("Download: %w", err))
+				return opts.Fallback(&post, *opts, fmt.Errorf("download: %w", err))
 			}
 		}
 		filenames = append(filenames, filename)
